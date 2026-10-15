@@ -1,0 +1,52 @@
+
+        QWidget { background:transparent; color:@text@; font-family:'@fontFamily@'; font-size:@fontSize@px; }
+        QMainWindow,QDialog { background:transparent; }
+        QMainWindow::separator { background:transparent; width:6px; height:6px; }
+        QMainWindow::separator:hover { background:@accent@; }
+        QDockWidget { border:0; background:transparent; }
+        QMenuBar { background:transparent; padding:2px; } QMenuBar::item { padding:4px 10px; border-radius:9px; }
+        QMenuBar::item:selected,QMenu::item:selected { background:@pillHover@; }
+        QMenu { background:@surfaceSolid@; border:1px solid @outline@; padding:4px; }
+        QMenu::item { padding:6px 24px; border-radius:8px; }
+        QMenu::separator { height:1px; background:@track@; margin:4px 10px; }
+        QPushButton,QToolButton { background:@pillIdle@; border:1px solid @outline@; border-radius:@controlRadius@px; padding:5px 12px; }
+        QPushButton:hover,QToolButton:hover { background:@pillHover@; }
+        QPushButton:pressed,QToolButton:pressed { background:@pillPressed@; }
+        QPushButton:focus,QToolButton:focus { border:2px solid @focus@; }
+        QPushButton:checked { background:@pillChecked@; border-color:@focus@; }
+        QPushButton:disabled { color:@disabled@; background:@pillIdle@; }
+        QPushButton#navigation0:checked,QPushButton[primary="true"]:enabled { background:@pillChecked@; border-color:@focus@; color:white; }
+        QPushButton[primary="true"]:hover { background:@pillHover@; }
+        QPushButton#recordAction,QPushButton#replayAction,QPushButton#saveAction { font-size:15px; font-weight:600; }
+        QPushButton#recordAction[recording="true"] { background:@recordSurface@; border-color:@recordOutline@; color:@recordText@; }
+        QTreeWidget,QListWidget,QPlainTextEdit,QScrollArea { background:transparent; border:0; }
+        QTreeWidget::item,QListWidget::item { padding:5px; }
+        QTreeWidget::item:selected,QListWidget::item:selected { background:@pillChecked@; color:@text@; }
+        QTreeWidget::item:hover,QListWidget::item:hover { background:@pillHover@; }
+        QTreeWidget::indicator,QCheckBox::indicator { width:14px; height:14px; border:1px solid @outline@; border-radius:4px; background:@pillIdle@; }
+        QTreeWidget::indicator:checked,QCheckBox::indicator:checked { background:@accent@; border-color:@focus@; }
+        QHeaderView::section { background:transparent; padding:5px; border:0; color:@secondary@; }
+        QLineEdit,QComboBox,QKeySequenceEdit,QDoubleSpinBox,QSpinBox,QTextEdit { background:@pillIdle@; padding:6px 12px; border:1px solid @outline@; border-radius:14px; }
+        QLineEdit:focus,QComboBox:focus,QKeySequenceEdit:focus { border-color:@focus@; }
+        QComboBox { min-height:19px; } QComboBox QAbstractItemView { background:@surfaceSolid@; selection-background-color:@pillChecked@; }
+        QSlider::groove:horizontal { height:4px; background:@track@; border-radius:2px; }
+        QSlider::sub-page:horizontal { background:@accent@; border-radius:2px; }
+        QSlider::handle:horizontal { width:15px; margin:-6px 0; background:@handle@; border:1px solid @outline@; border-radius:7px; }
+        QSlider::handle:horizontal:hover { background:@text@; }
+        QStatusBar { background:transparent; } QLabel#channelTitle,QLabel#sectionHeading { font-weight:600; }
+        QScrollBar:vertical { background:transparent; width:12px; }
+        QScrollBar::handle:vertical { background:@track@; min-height:24px; border-radius:6px; }
+        QScrollBar::handle:vertical:hover { background:@accent@; }
+        QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical { height:0; }
+        QToolTip { background:@surfaceSolid@; color:@text@; border:1px solid @outline@; padding:5px; }
+ QToolButton[caption="true"] {font-size:17px; border-radius:9px; background:@pillIdle@; border:1px solid @outline@;}
+ QToolButton[caption="true"]:hover,QToolButton[nativeHover="true"] {background:@pillHover@;}
+ QToolButton[nativePressed="true"] {background:@pillPressed@;}
+ QToolButton#Close:hover {background:@closeHover@;}
+
+QPushButton[dashboardNavigation="true"] {font-size:@fontSize@px;border-radius:@controlRadius@px;background:transparent;border:1px solid transparent;}
+QPushButton[dashboardNavigation="true"]:hover {background:@pillHover@;}
+QPushButton[dashboardNavigation="true"]:checked {background:@pillChecked@;border-color:@outline@;}
+QWidget#glassDockHeader {background:transparent;}
+QWidget#glassDockHeader QLabel {font-weight:600;}
+QWidget#glassDockHeader QToolButton {border-radius:8px;padding:3px;}

@@ -1,0 +1,97 @@
+# Build output and IDE state
+/build/
+**/build/
+/build-*/
+/cmake-build-*/
+/.vs/
+.vscode/*.log
+*.user
+*.suo
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Testing/
+
+# Distribution packages and generated binaries
+/dist/
+**/dist/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
+*.pch
+*.idb
+*.ipch
+*.qsb
+*.msix
+*.msi
+*.zip
+*.7z
+*.cab
+*.partial
+*.partial.*
+
+# Recording and test output
+recording/
+recordings/
+**/recording/
+**/recordings/
+*.mp4
+*.mkv
+*.wav
+*.aac
+*.h264
+*.raw
+*.trace
+*.etl
+*.dmp
+*.log
+
+# Generated assets and captured appearance evidence
+/generated/
+/generated-assets/
+**/generated/
+**/generated-assets/
+/docs/**/*screenshots/**
+
+# Local dependency installations (small reviewed libwebm and NVIDIA header sources stay included)
+/third_party/Qt/
+
+# Python/editor caches and temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+
+# Local settings, credentials, certificates, and signing material
+.env
+.env.*
+!.env.example
+secrets/
+**/secrets/
+credentials/
+**/credentials/
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+*.sig
+*.cer
+*.crt
+
+# Local tool logs and generated user data
+/aqtinstall.log
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache
+/UserseyaldOneDrive*/
+
+# Local Serena project metadata
+.serena/

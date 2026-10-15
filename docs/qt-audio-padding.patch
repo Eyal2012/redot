@@ -1,0 +1,295 @@
+--- a/src/multimedia/windows/qwindowsaudiosink.cpp
++++ b/src/multimedia/windows/qwindowsaudiosink.cpp
+@@ -15,6 +15,7 @@
+ #include "qwindowsaudiosink_p.h"
+ #include "qwindowsaudioutils_p.h"
+ #include "qcomtaskresource_p.h"
++#include "pandaclip_playback_trace.h"
+ 
+ #include <QtCore/qtimer.h>
+ #include <QtCore/qloggingcategory.h>
+@@ -64,6 +65,7 @@
+ AudioClient::AudioClient(const ComPtr<IMMDevice> &device, const QAudioFormat &format)
+     : m_device{ device }, m_inputFormat{ format }
+ {
++    m_traceClientId = PandaClipTrace::nextClient();
+ }
+ 
+ bool AudioClient::create(qsizetype &bufferSize)
+@@ -117,6 +119,25 @@
+         return false;
+     }
+ 
++    if (PandaClipTrace::writer().enabled()) {
++        ComPtr<IAudioClock> clock;
++        UINT64 frequency{};
++        if (SUCCEEDED(m_audioClient->GetService(IID_PPV_ARGS(clock.GetAddressOf()))))
++            clock->GetFrequency(&frequency);
++        LPWSTR deviceId{};
++        m_device->GetId(&deviceId);
++        PandaClipTrace::writer().format(m_traceClientId, m_inputFormat, m_outputFormat, deviceId ? deviceId : L"", frequency);
++        CoTaskMemFree(deviceId);
++    }
++    // Verification silences only this owned output session. Samples and gain
++    // still traverse the real WASAPI client; no global endpoint mute is used.
++    if (qEnvironmentVariableIsSet("PANDACLIP_PLAYBACK_SILENT_SESSION")) {
++        ComPtr<ISimpleAudioVolume> session;
++        BOOL muted{};
++        hr = m_audioClient->GetService(IID_PPV_ARGS(session.GetAddressOf()));
++        if (FAILED(hr) || FAILED(session->SetMute(TRUE, nullptr)) || FAILED(session->GetMute(&muted)) || !muted)
++            return false;
++    }
+     return true;
+ }
+ 
+@@ -136,12 +157,18 @@
+ 
+ void AudioClient::start()
+ {
+-    m_audioClient->Start();
++    PandaClipTrace::event(m_traceClientId, "start", m_audioClient->Start());
+ }
+ 
+ void AudioClient::stop()
+ {
+-    m_audioClient->Stop();
++    uint64_t position{};
++    if (PandaClipTrace::writer().enabled()) {
++        ComPtr<IAudioClock> clock;
++        if (SUCCEEDED(m_audioClient->GetService(IID_PPV_ARGS(clock.GetAddressOf())))) clock->GetPosition(&position,nullptr);
++    }
++    const auto pending=usedFrames(m_audioClient.Get()).value_or(0);
++    PandaClipTrace::event(m_traceClientId, "stop", m_audioClient->Stop(),position,pending);
+ }
+ 
+ std::optional<quint32> AudioClient::availableFrameCount() const
+@@ -200,6 +227,7 @@
+     HRESULT hr = m_renderClient->GetBuffer(writeFramesNum, &buffer);
+     if (FAILED(hr)) {
+         qCWarning(qLcAudioOutput) << "Failed to get buffer" << QSystemError::windowsComString(hr);
++        PandaClipTrace::event(m_traceClientId, "get-buffer-error", hr);
+         return -1;
+     }
+ 
+@@ -209,11 +237,29 @@
+     else
+         std::memcpy(buffer, writeBytes.data(), writeBytes.size());
+ 
++    std::vector<char> traceSubmitted;
++    if (PandaClipTrace::writer().enabled() && !writeBytes.isEmpty())
++        traceSubmitted.assign(reinterpret_cast<char*>(buffer), reinterpret_cast<char*>(buffer) + writeBytes.size());
+     DWORD flags = writeBytes.isEmpty() ? AUDCLNT_BUFFERFLAGS_SILENT : 0;
+     hr = m_renderClient->ReleaseBuffer(writeFramesNum, flags);
+     if (FAILED(hr)) {
+         qCWarning(qLcAudioOutput) << "Failed to return buffer" << QSystemError::windowsComString(hr);
+         return -1;
++    }
++    if (PandaClipTrace::writer().enabled()) {
++        PandaClipTrace::Write w;
++        w.client = m_traceClientId; w.tick = PandaClipTrace::tick();
++        w.requested = len; w.accepted = writeSize; w.frames = writeFramesNum;
++        w.padding = allocatedFrames(m_audioClient.Get()).value_or(*framesAvailable) - *framesAvailable; w.volume = volume; w.result = hr;
++        w.input.assign(data, data + writeSize);
++        w.converted.assign(writeBytes.constData(), writeBytes.constData() + writeBytes.size());
++        // The WASAPI pointer is invalid after ReleaseBuffer: the copy below
++        // was retained immediately before releasing that buffer.
++        w.submitted = std::move(traceSubmitted);
++        ComPtr<IAudioClock> clock;
++        if (SUCCEEDED(m_audioClient->GetService(IID_PPV_ARGS(clock.GetAddressOf()))))
++            clock->GetPosition(&w.clock, nullptr);
++        PandaClipTrace::writer().enqueue(std::move(w));
+     }
+     return writeSize;
+ };
+@@ -344,7 +390,7 @@
+     qint64 bytesRendered = m_client->render(m_format, m_volume, data, len);
+     if (bytesRendered > 0) {
+         deviceStateChange(QAudio::ActiveState, QAudio::NoError);
+-        m_timer->start(duration_cast<milliseconds>(m_client->remainingPlayTime()));
++        m_timer->start(ceil<milliseconds>(m_client->remainingPlayTime()));
+     }
+ 
+     return bytesRendered;
+@@ -366,6 +412,15 @@
+ 
+     m_timer->disconnect();
+     m_timer->callOnTimeout(this, [this](){
++        // PandaClip playback repair: a timer is a wake-up hint, not proof
++        // WASAPI has consumed every frame. Check padding before stopping.
++        if (deviceState != QAudio::ActiveState || !m_client)
++            return;
++        const auto remaining = m_client->remainingPlayTime();
++        if (remaining > std::chrono::microseconds::zero()) {
++            m_timer->start(std::chrono::ceil<std::chrono::milliseconds>(remaining));
++            return;
++        }
+         deviceStateChange(QAudio::IdleState, QAudio::UnderrunError);
+     });
+ 
+@@ -469,3 +524,18 @@
+ QT_END_NAMESPACE
+ 
+ #include "qwindowsaudiosink.moc"
++
++extern "C" Q_DECL_EXPORT void pandaclipFlushPlaybackTrace() {
++    PandaClipTrace::writer().finish();
++}
++extern "C" Q_DECL_EXPORT void pandaclipDecodedPlaybackTrace(const char* data, int bytes, long long pts) {
++    if (!PandaClipTrace::writer().enabled() || bytes <= 0) return;
++    PandaClipTrace::Write w; w.kind = "decoded"; w.tick = PandaClipTrace::tick();
++    w.clock = pts; w.requested = bytes; w.accepted = bytes; w.frames = bytes / 8;
++    w.input.assign(data, data + bytes); PandaClipTrace::writer().enqueue(std::move(w));
++}
++extern "C" Q_DECL_EXPORT void pandaclipPlaybackCommandTrace(const char* command, long long value) {
++    if (!PandaClipTrace::writer().enabled()) return;
++    PandaClipTrace::Write w; w.kind = command; w.tick = PandaClipTrace::tick(); w.clock = value;
++    PandaClipTrace::writer().enqueue(std::move(w));
++}
+--- a/src/multimedia/windows/qwindowsaudiosink_p.h
++++ b/src/multimedia/windows/qwindowsaudiosink_p.h
+@@ -63,6 +63,7 @@
+     QWindowsResampler m_resampler;
+     QAudioFormat m_inputFormat;
+     QAudioFormat m_outputFormat;
++    quint64 m_traceClientId{};
+ };
+ 
+ class QWindowsAudioSink : public QPlatformAudioSink
+--- /dev/null
++++ b/src/multimedia/windows/pandaclip_playback_trace.h
+@@ -0,0 +1,135 @@
++// PandaClip opt-in playback checkpoints. Injected into the local Qt source
++// build, not the SDK. No trace is produced unless a fresh build path is given.
++#pragma once
++#include <QtCore/qglobal.h>
++#include <QtMultimedia/qaudioformat.h>
++#include <atomic>
++#include <condition_variable>
++#include <deque>
++#include <filesystem>
++#include <fstream>
++#include <map>
++#include <mutex>
++#include <thread>
++#include <vector>
++#include <sstream>
++#include <audioclient.h>
++#include <windows.h>
++
++namespace PandaClipTrace {
++struct Write {
++    uint64_t client{}, tick{}, requested{}, accepted{}, frames{}, padding{}, clock{};
++    double volume{};
++    long result{};
++    std::string kind{"render"};
++    std::string format;
++    std::vector<char> input, converted, submitted;
++};
++class Writer {
++    static constexpr size_t Limit = 16 * 1024 * 1024;
++    std::mutex mutex_;
++    std::condition_variable ready_;
++    std::deque<Write> queue_;
++    size_t queued_{};
++    bool stop_{};
++    std::atomic_bool enabled_{};
++    std::thread worker_;
++    std::filesystem::path folder_;
++    std::atomic_uint64_t dropped_{}, written_{};
++    std::ofstream csv_;
++    void run() {
++        // Path validation, creation and every disk operation run here, never
++        // on Qt's UI/audio threads. Failure is an incomplete diagnostic run.
++        std::error_code ec;
++        const auto allowed = std::filesystem::weakly_canonical(std::filesystem::current_path() / L"build", ec);
++        folder_ = std::filesystem::weakly_canonical(folder_, ec);
++        const auto relative = folder_.lexically_relative(allowed);
++        if (ec || relative.empty() || *relative.begin() == L".." || std::filesystem::exists(folder_) || !std::filesystem::create_directories(folder_, ec) || ec) { enabled_=false; return; }
++        csv_.open(folder_ / L"writes.csv");
++        csv_ << "kind,client,qpc_ticks,requested_bytes,accepted_bytes,output_frames,padding_frames,device_clock,volume,hresult\n";
++        if (!csv_) { enabled_=false; return; }
++        struct Streams { std::ofstream input, converted, submitted; };
++        std::map<uint64_t, Streams> streams;
++        for (;;) {
++            Write w;
++            {
++                std::unique_lock lock(mutex_);
++                ready_.wait(lock, [&] { return stop_ || !queue_.empty(); });
++                if (queue_.empty()) break;
++                w = std::move(queue_.front()); queue_.pop_front();
++                queued_ -= w.input.size() + w.converted.size() + w.submitted.size();
++            }
++            if (written_ + w.input.size() + w.converted.size() + w.submitted.size() > 1024ull * 1024 * 1024) {
++                ++dropped_; continue;
++            }
++            if (!w.format.empty()) {
++                std::ofstream file(folder_ / (std::to_wstring(w.client) + L"-format.txt"));
++                file << w.format;
++                if (!file) ++dropped_;
++                continue;
++            }
++            auto& files = streams[w.client];
++            if (!files.input.is_open()) {
++                const auto prefix = std::to_wstring(w.client);
++                files.input.open(folder_ / (prefix + L"-B.pcm"), std::ios::binary);
++                files.converted.open(folder_ / (prefix + L"-converted.pcm"), std::ios::binary);
++                files.submitted.open(folder_ / (prefix + L"-C.pcm"), std::ios::binary);
++            }
++            files.input.write(w.input.data(), w.input.size());
++            files.converted.write(w.converted.data(), w.converted.size());
++            files.submitted.write(w.submitted.data(), w.submitted.size());
++            csv_ << w.kind << ',' << w.client << ',' << w.tick << ',' << w.requested << ',' << w.accepted << ','
++                 << w.frames << ',' << w.padding << ',' << w.clock << ',' << w.volume << ',' << w.result << '\n';
++            if (!files.input || !files.converted || !files.submitted || !csv_) ++dropped_;
++            written_ += w.input.size() + w.converted.size() + w.submitted.size();
++        }
++        csv_.flush();
++        std::ofstream summary(folder_ / L"summary.txt");
++        summary << "dropped_or_failed=" << dropped_ << "\npayload_bytes=" << written_ << '\n';
++    }
++public:
++    Writer() {
++        wchar_t text[32768]{};
++        if (!GetEnvironmentVariableW(L"PANDACLIP_PLAYBACK_TRACE", text, 32768)) return;
++        folder_ = text;
++        enabled_ = true;
++        worker_ = std::thread([this] { run(); });
++    }
++    ~Writer() { finish(); }
++    void finish() {
++        if (!worker_.joinable()) return;
++        { std::lock_guard lock(mutex_); stop_ = true; }
++        ready_.notify_one(); worker_.join();
++        enabled_ = false;
++    }
++    bool enabled() const { return enabled_; }
++    void format(uint64_t id, const QAudioFormat& input, const QAudioFormat& output, const wchar_t* device, uint64_t frequency, const char* renderer = "wasapi") {
++        if (!enabled_) return;
++        std::ostringstream file;
++        LARGE_INTEGER qpc{}; QueryPerformanceFrequency(&qpc);
++        file << "input_rate=" << input.sampleRate() << "\ninput_channels=" << input.channelCount()
++             << "\ninput_type=" << int(input.sampleFormat()) << "\ninput_frame_bytes=" << input.bytesPerFrame()
++             << "\noutput_rate=" << output.sampleRate() << "\noutput_channels=" << output.channelCount()
++             << "\noutput_type=" << int(output.sampleFormat()) << "\noutput_frame_bytes=" << output.bytesPerFrame()
++             << "\nrenderer=" << renderer << "\nclock_frequency=" << frequency << "\nqpc_frequency=" << qpc.QuadPart
++             << "\ndevice=" << QString::fromWCharArray(device).toUtf8().constData() << '\n';
++        Write w; w.client = id; w.format = file.str(); enqueue(std::move(w));
++    }
++    void enqueue(Write w) {
++        if (!enabled_) return;
++        const auto size = w.input.size() + w.converted.size() + w.submitted.size();
++        std::lock_guard lock(mutex_);
++        if (stop_) { ++dropped_; return; }
++        if (size > Limit || queued_ + size > Limit || queue_.size() >= 8192) { ++dropped_; return; }
++        queued_ += size; queue_.push_back(std::move(w)); ready_.notify_one();
++    }
++};
++inline Writer& writer() { static Writer instance; return instance; }
++inline uint64_t nextClient() { static std::atomic_uint64_t value{}; return ++value; }
++inline uint64_t tick() { LARGE_INTEGER value{}; QueryPerformanceCounter(&value); return value.QuadPart; }
++inline void event(uint64_t id, const char* kind, HRESULT hr, uint64_t clock = 0, uint64_t padding = 0) {
++    if (!writer().enabled()) return;
++    Write w; w.client = id; w.tick = tick(); w.kind = kind; w.result = hr; w.clock = clock; w.padding = padding;
++    writer().enqueue(std::move(w));
++}
++}

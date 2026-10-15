@@ -1,0 +1,47 @@
+ReDot's frontend uses dynamically linked Qt 6.8.3 libraries.
+Qt Core/Gui/Widgets/Network/QML/Quick/Quick Controls/Quick Effects/Multimedia are used
+under GNU LGPL version 3. Qt and its third-party components retain their
+respective copyrights and licenses. Qt is copyright The Qt Company and
+other contributors. Complete matching source archives and the license texts
+are provided in this distribution's licenses/Qt/sources and notices folders.
+
+You may replace the Qt DLLs and plugins with compatible rebuilt versions.
+ReDot does not verify or lock their signatures, and does not prohibit
+reverse engineering for debugging modifications to these libraries. Rebuild
+instructions are contained in the supplied Qt sources. Use MSVC 2022 x64
+and the same Qt module/version/ABI; put replacement DLLs alongside ReDot
+and matching plugins/QML modules in their corresponding deployment folders.
+Qt6Multimedia.dll (Qt6Multimediad.dll in Debug) has a small ReDot playback
+repair in src/multimedia/windows/qwindowsaudiosink.cpp: round timer waits up
+and recheck WASAPI padding before stopping the output client. It also has
+opt-in bounded playback PCM diagnostics. Its private AudioClient header and
+the supplied ReDot trace header support these changes. An unsuccessful
+WinMM audio-output trial was removed from production; it is not a claimed
+distortion repair. All other Qt
+libraries and the FFmpeg/QML plugins remain unmodified. The exact change and
+build recipe are included in licenses/Qt/changes/qt-audio-padding.patch and
+build_qt_audio.py and qt_playback_trace.h; pristine corresponding Qt sources remain in
+licenses/Qt/sources. The project README, docs/player-output.md and historical docs/playback-audio.md explain
+the build. The script applies the changes to the matching archive in a
+project-local build folder, using MSVC 2022 x64, CMake and Ninja Multi-Config.
+For full-source rebuilding, apply the patch to qtmultimedia 6.8.3 and build
+the Multimedia target against matching Qt 6.8.3. Public/plugin ABI is unchanged.
+Qt Multimedia and its dynamically linked FFmpeg
+7.1 backend are used only for media playback; recording remains ReDot's
+own WGC/D3D11/NVENC/WASAPI/Media Foundation pipeline. FFmpeg is LGPL version
+2.1 or later, built without GPL/nonfree features or command-line programs.
+Matching upstream source, license texts and the observed build configuration
+are supplied alongside the Qt sources. Compatible FFmpeg DLL replacement
+and reverse engineering to debug library modifications are permitted too.
+The project-local aqt 3.3.0 installer has a
+documented UTF-8/Windows ANSI decoding fix; it is a development tool, not
+an application runtime library. GPL-licensed development utilities are not
+linked into ReDot. Shader tooling is used only during development.
+
+Qt licensing: https://doc.qt.io/qt-6/licensing.html
+LGPL obligations: https://www.qt.io/development/open-source-lgpl-obligations
+Exact source archive index:
+https://download.qt.io/archive/qt/6.8/6.8.3/submodules/
+Qt's third-party attributions are included in the matching source archives
+and source LICENSES folders. Do not separate the notices/sources from a
+redistributed package.

@@ -1,0 +1,82 @@
+# ReDot development rules (formerly PandaClip)
+
+- Keep all project files, generated build output, and documentation inside this workspace.
+- Use C++20, MSVC, CMake, Windows Graphics Capture, and Direct3D 11. Do not introduce OBS/libobs or wrap another recorder.
+- Keep capture and recording lifecycle changes safe across repeated start/stop, window closure, resize, and shutdown.
+- Keep capture processing, NVENC work, and file writing off the UI thread. Use bounded queues and do not reuse an NVENC input resource before encoding has completed.
+- Keep the recording clock monotonic and independent of preview redraw timing; document frame-drop/repeat behavior and maintain useful queue/encoder diagnostics.
+- Capture selected-application audio with WASAPI process loopback. Whole-system loopback must be an explicit user selection and must never be used as an implicit fallback.
+- Keep microphone and game audio on separate capture threads with bounded packet queues. Timestamp against the common monotonic clock, resample to 48 kHz, and correct device-clock drift before mixing.
+- Keep a default mixed AAC track plus a separate AAC stem for each enabled source. Preserve the documented stream order and drain all AAC streams before reporting a file as saved.
+- Surface requested-audio startup errors; if a source disconnects during recording, report it and continue video with silence for that source. Do not silently switch devices or source modes.
+- Replay stores only compressed H.264/AAC packets. Reuse the existing encoder output when settings match; do not create a second encoder session for replay while recording.
+- Bound replay by both history duration and RAM bytes, including retained export snapshots. Keep pending exports bounded. Snapshot packets by shared ownership so eviction cannot invalidate a save in progress.
+- A replay MP4 must start at an H.264 IDR with its parameter sets. Preserve packet DTS/PTS and use one common offset for every track. Keep AAC access units complete; document and show keyframe/AAC-boundary effects on actual clip duration.
+- Replay export must run asynchronously, mux compressed packets without re-encoding, finalize the MP4 before reporting Saved, and fail without stopping the rolling capture. Use unique temporary/final paths for concurrent exports.
+- Explicitly reset/report replay history when encoder/audio configuration changes or when switching the replay-only worker to/from ordinary recording.
+- Keep the MP4 verifier capable of decoding every replay stream and measuring flash/beep offsets from exported timestamps. Distinguish synthetic-source measurements from real game cadence and listening checks.
+- Log WGC frame availability, encode delays, queue pressure, late/repeated/dropped frames, audio timestamp fallbacks, and audio queue loss.
+- Do not add the gallery, automatic highlights, or editing/trimming behavior until requested.
+- Log actionable diagnostics under `%LOCALAPPDATA%\PandaClip\logs` and surface user-facing failures in the app.
+- Enqueue diagnostic logs into a bounded background writer; keep folder creation, cross-process log locking, and disk writes off UI/capture/encoder callers. Report log queue overflow and write errors in diagnostics.
+- Preserve the selected target's aspect ratio in the preview.
+- Document setup and known limitations in `README.md`.
+- Map WGC compositor timestamps and WASAPI device timestamps through the same calibrated QPC mapping. Retain owned GPU-copy leases until the consumer releases them; never keep a returned WGC pool surface as encoder input.
+- Keep optional per-source sync adjustment at zero by default. Positive milliseconds delay PCM and negative milliseconds advance PCM before mixing/encoding. Apply changes between sessions and reset replay history; never infer a correction from a synthetic flash/beep offset alone.
+- Recover capture through drain/suspend/wait/restart transitions. Match the same executable and window title on reopening, pin audio endpoint IDs, limit automatic capture attempts to three and audio retries to three, and never join an active encoder on the UI thread.
+- Keep diagnostics in the separate view/report. Preserve saved filenames and files through recovery. Controlled fault tests must affect only ReDot notifications, its own worker paths, and files under the project's build directory.
+- Use fine audio cue detection and compare ordinary/replay events from the same session with the common replay offset. AAC continuity alone does not validate perceptual synchronization.
+- Request WGC Borderless access asynchronously. Set IsBorderRequired(false) only after Allowed, reapply to every new session, and report denied/unsupported/error states honestly. Neither property success nor permission success proves the visible outline is absent; another capture can require it. Keep the optional MSIX graphicsCaptureWithoutBorder capability.
+- Label default microphone selection as the Windows default recording input (eConsole), pin its resolved endpoint, and show the actual opened name. Pre-recording mic checks use the same WASAPI converter on a worker without queuing PCM or opening an encoder. Stop the check asynchronously before recording/replay. Report raw sample activity separately from Windows input mute/volume and PandaClip recording gain/mute; never infer audible speech from nonzero samples alone.
+- Default verification must be quiet: no global keyboard/mouse injection, pointer movement, foreground activation, audible stimuli, or control of personal ReDot/Geometry Dash sessions. Use owned PID/control handles and profiles/output/logs under build. Interactive legacy runners require explicit opt-in and must clearly say what they do.
+- Prefer deterministic GPU/PCM fixtures and component decoding. Keep WGC, actual WASAPI capture, speaker/flash synchronization, and listening distinct; silent or generated audio does not validate application-loopback capture.
+- UI automation uses an inactive owned desktop without SwitchDesktop, or explicitly hidden test windows with targeted APIs. Never substitute another physical cursor for isolation. Bound API waits and terminate only a positively identified owned test process if its shutdown times out; preserve failed artifacts honestly.
+- Keep generated-source seams compiled only into verification targets. Use bounded GPU-copy leases and multithread protection for test contexts shared with NVENC. Shipping presentation and test presentation share the same UI source.
+- Preserve one moving Qt Settings content viewport per category. Wheel/scroll handlers must not relayout rows, enumerate devices, collect/save settings, resize preview, or rebuild the gallery. Keep solid and no-animation appearance options.
+- Use real Qt Widgets docks with transparent widget foregrounds over the shared View Media GPU glass implementation, and Qt Quick for the separate View Media window. The user's shared-glass request supersedes the older opaque-workspace rule. Do not show legacy controller controls as a fallback frontend. Keep the adapter explicit until controller state is fully separated from Win32 controls.
+- Store Qt layout/geometry in workspace-layout-v1.txt, separately from recording settings. Let Qt drive controller health polling; WGC notifications must target the controller HWND, not the Qt preview root. Accept the final Qt close after backend drain completes.
+- Keep shipping preview on its native D3D11 surface. GPU screenshot readback and fixture inputs belong only in verification targets. Media glass samples bounded regions of its own content, with coalesced updates; never add a live full-window or preview CPU-copy blur path.
+- Keep Qt dynamically linked and deploy plugins/QML alongside the executable. Retain Qt notices, LGPL text and corresponding unmodified sources; do not introduce GPL-only runtime modules inadvertently. Quiet UI tests must inspect actual Qt widgets, not the hidden Win32 compatibility controls.
+- Validate the selected capture window before borderless consent. Bound consent waits, preserve a single pending start, allow explicit cancellation, and release controls on every terminal outcome. Denied/failed borderless access must not disable ordinary outlined capture.
+- Feed Qt audio meters from coherent floating-point PCM RMS/peak snapshots, before recording gain/mute. Retain real bursts with a monotonic release envelope; never use the hidden progress control as the frontend meter source or manufacture meter activity.
+- The approved v1 dashboard supersedes the default dock layout and internal application backdrop. Use supported DWM Desktop Acrylic for the scene physically behind the window, with transparent Qt foregrounds and one stable bounded GPU tint/rim layer per workspace/dialog. Never replace desktop transmission with internal wallpaper, a pasted screenshot, or desktop/preview capture. API success and foreground-alpha checks do not prove compositor transmission; report active-desktop checks separately. Keep deliberate solid/reduced-transparency fallback, coalesced geometry changes and structure-only control discovery. Advanced docks remain optional; Qt 6.8 detached docks use solid materials. View Media retains its existing local-content glass.
+- Custom captions must retain native resize/caption/maximize hit testing, system styles, monitor work-area bounds and accessible controls. Verify native client geometry as well as screenshots, and preserve backend drain/tray behavior on Close.
+- Declare supported Qt frameless flags before native creation, then restore the custom frame's Windows system/sizing styles. Assert scaled Qt content and native client dimensions agree; removing native margins alone leaves Qt with stale caption coordinates.
+- Handle client title-bar press/double-click through supported Qt system move/maximize operations as well as root native hit testing. Quiet checks cancel only their owned native move loop and must not call that a physical drag/snap test.
+- At recording attach, seed an existing retained owned GPU image at the new session's clock origin; distinguish it from fresh WGC availability. Re-read ingress when publishing an in-flight WGC copy. Bound first-video waits and never treat generated-frame checks as real WGC verification.
+
+- Keep five distinct Quick Settings gears for recording, replay, clip saving, game audio and microphone. Use the canonical settings model, one bounded anchored scrollable popup, safe session boundaries, Escape/outside dismissal and focus restoration. Default dashboard and advanced dock layout persist independently of recording preferences.
+
+- Keep the Qt Quick material widget non-native: declare AA_DontCreateNativeWidgetSiblings before QApplication, and WA_DontCreateNativeAncestors before the preview's WA_NativeWindow. Establish the root RHI backing store before creating its native preview/chrome. Internal grabFramebuffer success is insufficient; inspect the deployed HWND separately. External owned-window screenshots are verification tools only, never styling inputs.
+
+- Capture and View Media share the DesktopBackdrop policy/helper and dark-purple material tokens. Media's outer background must never use a thumbnail/game image; bounded local decoded-video sampling belongs only to playback controls. Observe policy notifications on each owned HWND, coalesce refresh, preserve QWindow alpha and Acrylic margins through custom chrome updates, and keep solid accessibility fallbacks honest. Passive active-desktop verification must set native WS_EX_NOACTIVATE and WS_EX_TRANSPARENT before first show and fail on observed foreground activation.
+
+- Production consolidation: qml/design-system.json, GlassPanel and shared Qt/QML controls are canonical for every page/popover. Qt is mandatory; hidden Win32 controls are state adapters only. No desktop/video sampling draws production materials. Glass Lab remains separate and off by default. Preserve accessibility/unavailable solid fallback; focus loss must not select it. Accepted Acrylic requests are not transmission evidence.
+
+- Keep root alpha and panel/control materials invariant across input focus changes, including another monitor. Custom caption WM_NCACTIVATE uses a constant nonclient visual policy, explicitly returns TRUE for deactivation, and leaves WM_ACTIVATE/WM_ACTIVATEAPP and real input focus alone. Honor actual accessibility/support failures, not an inactive solid branch. Quick Settings remain nonnative child overlays without a nested QQuickWidget backing store. Diagnostics must use effectiveWinId rather than creating child HWNDs. Give native choice popups the logical root's HWND owner, defer deactivation dismissal until popup creation settles, and never force activation. DWM owns the single outer contour; do not add a duplicate Qt window/caption rim. Physical-desktop passive tests must never start capture/recording.
+
+- Focus notifications must update diagnostics only, without native backdrop or margin writes. Cache the effective policy and HWND; reapply only for an actual enable-state/HWND change or compositor reset. Test unchanged settings notifications and real thread activation on the inactive owned desktop; distinguish those from user-reported two-monitor visual checks and physical Windows scaling.
+
+## Project identity and data compatibility (rename to ReDot)
+
+- The project, workspace folder, CMake project, executable (`ReDot.exe`), tests and tools are named ReDot. Source files keep their existing names; do not rename source files or C++ identifiers merely for branding.
+- Persistent identifiers keep their original PandaClip spelling and must not change without a backed-up, reversible migration that never deletes old files: `%LOCALAPPDATA%\PandaClip\` (`settings-v1.txt`, `scenes-v1.json`, `workspace-layout-v1.txt`, `logs\panda.log`), the `PandaClip settings 1` header, the `PandaClipScenes` format tag, the `PandaClip tracks 1` sidecar header, the default `Videos\PandaClip` output folder, `PandaClip_`/`PandaClip_Clip_`/`PandaClip_Diagnostics_` filename prefixes (new files use `ReDot_`; both are read), the cross-process log mutex, window class names, the `qrc:/PandaClip/` resource prefix, `PANDACLIP_*` environment-variable test hooks, the patched Qt Multimedia symbols, and the MSIX `Identity`/`Publisher`/`Application Id`.
+- Never move or rewrite personal recordings or settings; tests use profiles, outputs and logs under `build`.
+- Keep approved `build\redot-*\Release\ReDot.exe` executables as fallbacks. Use a fresh build directory after moving the workspace; never edit a CMake cache with old absolute paths.
+- Historical documents in `docs/` keep their original wording and old target names; `CLAUDE.md` is the short project overview and defers to this file for rules.
+
+## Recording containers
+
+- Ordinary recordings default to MKV (libwebm, pinned and vendored unmodified in `third_party/libwebm`); MP4 stays the alternative and instant-replay exports are always MP4. Missing or invalid `recordFormat` must load as MKV, an explicit MP4 must persist, and a change applies to the next recording only. See `docs/mkv-recording.md`.
+- An MKV is written incrementally as `*.partial.mkv` with read-only sharing and renamed only after a successful finalize; never report Saved otherwise. Keep bounded buffering and the per-packet hand-off to the OS.
+- Recovery may only create a new, validated `*_recovered.mkv` from an orphaned `*.partial.mkv` (one no process holds open for writing) and must keep the original (renamed `*.partial.mkv.recovered`). Never overwrite or delete a recording, and leave unvalidated partial files untouched.
+- Do not claim protection against Windows crashes or power loss; document storage-cache loss.
+
+## Testing time limit (hard rule)
+
+- **Maximum 10 minutes of total testing per task**, covering Debug, Release, integration tests and retries combined. This is not per test. Building is separate; avoid unnecessary rebuilds.
+- Start with the smallest focused tests relevant to the change and reuse existing results; do not restart tests that already passed.
+- Never run long benchmarks, soak/stress tests or repeated full regression suites unless the user explicitly requests them.
+- When the limit is reached, stop and report what passed, failed and remains untested. Do not leave background test jobs running past the limit.
+- Do not spend extra time fixing test infrastructure unless the feature directly requires it.
+- Leave real gameplay and UI verification to the user's manual checks.

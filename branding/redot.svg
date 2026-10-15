@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>ReDot — replay with an integrated status dot</title>
+  <path id="replay-ring" d="M 49 23 C 45 14 35 9 25 12 C 12 16 6 30 12 43 C 17 54 30 58 42 52" fill="none" stroke="#A68AD4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path id="replay-arrow" d="M 49 11 L 49 23 L 37 23" fill="none" stroke="#A68AD4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle id="status-dot" cx="50" cy="43" r="7" fill="#BEA3E8"/>
+</svg>
